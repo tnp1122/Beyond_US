@@ -4,21 +4,21 @@ import pandas as pd
 import time
 import sys
 
-FileName = 'data.csv'
 
 class DcCoin:
-    def __init__(self):
-        self.base_url_m = "https://m.dcinside.com/board/coin/"
-        self.header_m = {
-            'User-Agent': 'Mozilla/5.0 (Linux; U; Android 4.0.3; ko-kr; LG-L160L Build/IML74K) AppleWebkit/534.30 (KHTML, like Gecko) Version/4.0 Mobile Safari/534.30'}
-        self.size = 10  # size of chunk
+    def __init__(self, id='coin'):
+        self.FileName = 'Dc' + id[0].upper() + id[1:] + '.csv'
+        self.base_url_m = "https://m.dcinside.com/board/" + id + '/'
+        self.header_m = {'User-Agent': 'Mozilla/5.0 (Linux; U; Android 4.0.3; ko-kr; LG-L160L Build/IML74K) AppleWebkit/534.30 (KHTML, like Gecko) Version/4.0 Mobile Safari/534.30'}
+        self.size = 100  # size of chunk
         self.html = requests.get(self.base_url_m, headers=self.header_m)
         self.bs = BeautifulSoup(self.html.content, 'lxml')
         self.first = self.bs.find('div', class_='gall-detail-lnktb').find('a', class_='lt')['href']
         self.from_num = int(self.first[len(self.base_url_m):])
         self.data = pd.DataFrame()
+        self.end_check = False
         try:
-            self.data = pd.read_csv(FileName, index_col=['Unnamed: 0'])
+            self.data = pd.read_csv(self.FileName, index_col=['Unnamed: 0'])
         except:
             pass
 
@@ -26,9 +26,15 @@ class DcCoin:
         if not self.data.empty:
             self.update_data()
             print("최신 데이터 업데이트 완료")
-
         print("crawling to end page")
         self.save_end_data()
+        self.update_data()
+
+        print("실시간 업데이트 작동")
+        while self.end_check:
+            self.first = self.bs.find('div', class_='gall-detail-lnktb').find('a', class_='lt')['href']
+            self.from_num = int(self.first[len(self.base_url_m):])
+            self.update_data()
 
     def search_data(self, from_num, size):
         contents = []
@@ -68,21 +74,23 @@ class DcCoin:
         chunk_n = int((gap - gap % self.size) / self.size)
         for n in range(chunk_n):
             self.data = pd.concat([self.data, self.search_data(index[0] + n * self.size, self.size)]).drop_duplicates(subset=['주소'], keep='last').sort_index(ascending=False)
-            self.data.to_csv('data.csv', encoding='utf-8-sig')
+            self.data.to_csv(self.FileName, encoding='utf-8-sig')
         self.data = pd.concat([self.data, self.search_data(self.from_num, 2 * self.size)]).drop_duplicates(subset=['주소'], keep='last').sort_index(ascending=False)
-        self.data.to_csv('data.csv', encoding='utf-8-sig')
+        self.data.to_csv(self.FileName, encoding='utf-8-sig')
         self.from_num = self.data.index.tolist()[-1]
 
     def save_end_data(self):
         n = 0
         while (self.from_num - n * self.size) > self.size:
             self.data = pd.concat([self.data, self.search_data(self.from_num - n * self.size, self.size)]).drop_duplicates(subset=['주소'], keep='last').sort_index(ascending=False)
-            self.data.to_csv('data.csv', encoding='utf-8-sig')
+            self.data.to_csv(self.FileName, encoding='utf-8-sig')
             n += 1
         if self.from_num - n * self.size < self.size:
             num = self.from_num - n * self.size
             self.data = pd.concat([self.data, self.search_data(num, num)]).drop_duplicates(subset=['주소'], keep='last').sort_index(ascending=False)
-        self.data.to_csv('data.csv', encoding='utf-8-sig')
+            self.data.to_csv(self.FileName, encoding='utf-8-sig')
+            self.end_check = True
+            print("마지막 데이터 업데이트 완료")
 
     def get_data(self, prt=False):
         if prt:
